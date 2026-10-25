@@ -1,0 +1,6 @@
+fileignoreconfig:
+  - filename: classpath.txt
+    checksum: 4cbb8905002260d73fd1cd4d91357da9a11ad46063a9602034385a515b673997
+  - filename: effective-pom.xml
+    checksum: 7a84a2ff95059c0b69077ee75eeae6ca9e1b3930816a342c7ab28c54799f8623
+version: "1.0"

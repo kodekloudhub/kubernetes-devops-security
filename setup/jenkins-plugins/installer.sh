@@ -1,33 +1,60 @@
 #!/bin/bash
-
 set -eo pipefail
 
 JENKINS_URL='http://localhost:8080'
+JENKINS_USER='admin'
+JENKINS_PASSWORD='redhat'
 
-JENKINS_CRUMB=$(curl -s --cookie-jar /tmp/cookies -u admin:admin ${JENKINS_URL}/crumbIssuer/api/json | jq .crumb -r)
+echo "Checking Jenkins authentication..."
 
-JENKINS_TOKEN=$(curl -s -X POST -H "Jenkins-Crumb:${JENKINS_CRUMB}" --cookie /tmp/cookies "${JENKINS_URL}/me/descriptorByName/jenkins.security.ApiTokenProperty/generateNewToken?newTokenName=demo-token66" -u admin:admin | jq .data.tokenValue -r)
+# Get Jenkins crumb
+JENKINS_CRUMB=$(curl -fsS \
+  --cookie-jar /tmp/cookies \
+  -u "${JENKINS_USER}:${JENKINS_PASSWORD}" \
+  "${JENKINS_URL}/crumbIssuer/api/json" |
+  jq -r '.crumb')
 
-echo $JENKINS_URL
-echo $JENKINS_CRUMB
-echo $JENKINS_TOKEN
+if [ -z "$JENKINS_CRUMB" ] || [ "$JENKINS_CRUMB" = "null" ]; then
+    echo "ERROR: Could not obtain Jenkins crumb."
+    exit 1
+fi
 
-while read plugin; do
+echo "Jenkins authentication successful."
+echo "Jenkins URL: ${JENKINS_URL}"
+echo "Jenkins Crumb: ${JENKINS_CRUMB}"
+
+# Generate Jenkins API token
+JENKINS_TOKEN=$(curl -fsS -X POST \
+  -H "Jenkins-Crumb:${JENKINS_CRUMB}" \
+  --cookie /tmp/cookies \
+  -u "${JENKINS_USER}:${JENKINS_PASSWORD}" \
+  "${JENKINS_URL}/me/descriptorByName/jenkins.security.ApiTokenProperty/generateNewToken?newTokenName=demo-token66" |
+  jq -r '.data.tokenValue')
+
+if [ -z "$JENKINS_TOKEN" ] || [ "$JENKINS_TOKEN" = "null" ]; then
+    echo "ERROR: Could not generate Jenkins API token."
+    exit 1
+fi
+
+echo "Jenkins API token generated successfully."
+
+while read -r plugin; do
+
+   # Skip empty lines and comments
+   [[ -z "$plugin" || "$plugin" =~ ^# ]] && continue
+
    echo "........Installing ${plugin} .."
-   curl -s POST --data "<jenkins><install plugin='${plugin}' /></jenkins>" -H 'Content-Type: text/xml' "$JENKINS_URL/pluginManager/installNecessaryPlugins" --user "admin:$JENKINS_TOKEN"
+
+   curl -fsS -X POST \
+     --data "<jenkins><install plugin='${plugin}' /></jenkins>" \
+     -H 'Content-Type: text/xml' \
+     -H "Jenkins-Crumb:${JENKINS_CRUMB}" \
+     "${JENKINS_URL}/pluginManager/installNecessaryPlugins" \
+     --user "${JENKINS_USER}:${JENKINS_TOKEN}"
+
 done < plugins.txt
 
-
-#### we also need to do a restart for some plugins
-
-#### check all plugins installed in jenkins
-# 
-# http://<jenkins-url>/script
-
-# Jenkins.instance.pluginManager.plugins.each{
-#   plugin -> 
-#     println ("${plugin.getDisplayName()} (${plugin.getShortName()}): ${plugin.getVersion()}")
-# }
-
-
-#### Check for updates/errors - http://<jenkins-url>/updateCenter
+echo
+echo "======================================"
+echo " Jenkins plugin installation triggered"
+echo "======================================"
